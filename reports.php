@@ -179,6 +179,11 @@ $location_stats = $db->fetchAll("
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="realtime_dashboard.php">
+                                <i class="fas fa-broadcast-tower me-2"></i>Live Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link active" href="reports.php">
                                 <i class="fas fa-chart-bar me-2"></i>Reports
                             </a>

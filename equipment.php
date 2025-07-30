@@ -156,6 +156,11 @@ if (isset($_GET['delete'])) {
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="realtime_dashboard.php">
+                                <i class="fas fa-broadcast-tower me-2"></i>Live Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="reports.php">
                                 <i class="fas fa-chart-bar me-2"></i>Reports
                             </a>
@@ -358,12 +363,10 @@ if (isset($_GET['delete'])) {
             document.getElementById('equipmentName').textContent = itemName;
             document.getElementById('barcodeNumber').textContent = barcode;
             
-            // Generate barcode image (simple representation)
+            // Generate proper barcode image
             const barcodeContainer = document.getElementById('barcodeContainer');
             barcodeContainer.innerHTML = `
-                <div style="font-family: 'Courier New', monospace; font-size: 2em; letter-spacing: 2px; border: 2px solid #000; padding: 10px; display: inline-block;">
-                    ||||| || ||| | || |||||
-                </div>
+                <img src="generate_barcode.php?code=${encodeURIComponent(barcode)}" alt="Barcode: ${barcode}" style="max-width: 100%; height: auto;">
             `;
             
             const modal = new bootstrap.Modal(document.getElementById('barcodeModal'));
