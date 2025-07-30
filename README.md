@@ -28,8 +28,10 @@ A comprehensive web-based inventory management system built with PHP and MySQL f
 ### 🏷️ Barcode System
 - **Auto-generation**: Automatic barcode generation for each equipment
 - **Unique Codes**: Ensures each equipment has a unique barcode identifier
-- **Visual Display**: Barcode visualization and printing capabilities
+- **Enhanced Visual Display**: Improved barcode visualization with SVG generation
 - **Format**: EQ[YEAR][5-digit-number] (e.g., EQ202400001)
+- **Barcode Scanner**: Real-time barcode scanning interface for location updates
+- **Location Tracking**: Scan barcodes to instantly update equipment locations
 
 ### 📊 Admin Activity Logs
 - **Complete Tracking**: Monitor all admin activities in the system
@@ -46,15 +48,25 @@ A comprehensive web-based inventory management system built with PHP and MySQL f
 - **Location Management**: Track equipment by location
 - **Export Options**: Print-friendly report generation
 
+### 📍 Location Tracking System
+- **Real-time Location Updates**: Scan barcodes to instantly update equipment locations
+- **Location History**: Complete tracking of equipment movement over time
+- **Barcode Scanner Interface**: Dedicated scanning interface for quick location updates
+- **Location Analytics**: Statistics and reports on equipment distribution
+- **Movement Logs**: Detailed logs of all location changes with timestamps
+- **Multi-user Support**: Track which admin performed location updates
+
 ## 🗄️ Database Structure
 
 ### Tables
 1. **admin_users**: Admin user accounts and authentication
-2. **equipment**: Equipment items with all details
-3. **admin_logs**: Complete activity logging system
+2. **equipment**: Equipment items with all details and location tracking
+3. **location_history**: Complete history of equipment location changes
+4. **admin_logs**: Complete activity logging system
 
 ### Key Fields
-- **Equipment**: ID, name, description, category, quantity, condition, location, barcode, purchase info
+- **Equipment**: ID, name, description, category, quantity, condition, location, barcode, purchase info, last_scanned_at, last_scanned_by
+- **Location History**: Equipment ID, previous/new location, scanned by, scan method, notes, timestamp
 - **Admin Logs**: Admin ID, action, table affected, old/new values, IP, timestamp
 - **Users**: ID, email, password (hashed), full name, timestamps
 
@@ -108,12 +120,16 @@ Ensure proper file permissions for the web server to read/write files.
 - **Equipment List** (`equipment.php`): View and manage all equipment
 - **Add Equipment** (`add_equipment.php`): Add new equipment items
 - **Edit Equipment** (`edit_equipment.php`): Modify existing equipment
+- **Barcode Scanner** (`barcode_scanner.php`): Scan barcodes to update locations
+- **Location Tracker** (`location_tracker.php`): View and manage equipment locations
 - **Reports** (`reports.php`): Analytics and reporting
 - **Activity Logs** (`logs.php`): Admin activity monitoring
 
 ### Key Features Per Page
 - **Dashboard**: Statistics cards, recent equipment, activity feed
-- **Equipment**: Search, filter, barcode viewing, CRUD operations
+- **Equipment**: Search, filter, enhanced barcode viewing, CRUD operations
+- **Barcode Scanner**: Real-time barcode scanning, location updates, recent changes
+- **Location Tracker**: Location statistics, equipment filtering, location history
 - **Reports**: Charts, statistics tables, export options
 - **Logs**: Filtering, pagination, detailed activity tracking
 

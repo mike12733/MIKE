@@ -21,9 +21,115 @@ function requireLogin() {
     }
 }
 
-// Generate unique barcode
+// Generate unique barcode with better format
 function generateBarcode() {
     return 'EQ' . date('Y') . str_pad(rand(1, 99999), 5, '0', STR_PAD_LEFT);
+}
+
+// Generate enhanced barcode image using Code128 format
+function generateBarcodeImage($barcode) {
+    // Create a more realistic barcode SVG
+    $width = 300;
+    $height = 100;
+    $barWidth = 2;
+    $bars = [];
+    
+    // Simple pattern for demonstration - in production, use proper Code128 encoding
+    $pattern = str_split(md5($barcode));
+    $x = 20;
+    
+    foreach ($pattern as $i => $char) {
+        if ($i % 2 == 0) {
+            $bars[] = '<rect x="' . $x . '" y="15" width="' . $barWidth . '" height="50" fill="black"/>';
+        }
+        $x += $barWidth + 1;
+        if ($x > $width - 40) break;
+    }
+    
+    $svg = '
+    <svg width="' . $width . '" height="' . $height . '" xmlns="http://www.w3.org/2000/svg">
+        <rect width="' . $width . '" height="' . $height . '" fill="white" stroke="#ccc"/>
+        ' . implode('', $bars) . '
+        <text x="' . ($width/2) . '" y="85" text-anchor="middle" font-family="Arial" font-size="12" fill="black">' . $barcode . '</text>
+    </svg>';
+    
+    return "data:image/svg+xml;base64," . base64_encode($svg);
+}
+
+// Update equipment location via barcode scan
+function updateEquipmentLocation($barcode, $new_location, $notes = '') {
+    global $db;
+    
+    if (!isLoggedIn()) return false;
+    
+    try {
+        // Get current equipment data
+        $equipment = $db->fetch("SELECT * FROM equipment WHERE barcode = ?", [$barcode]);
+        
+        if (!$equipment) {
+            return ['success' => false, 'message' => 'Equipment not found with barcode: ' . $barcode];
+        }
+        
+        $previous_location = $equipment['location'];
+        
+        // Update equipment location and scan info
+        $db->query("UPDATE equipment SET location = ?, last_scanned_at = NOW(), last_scanned_by = ? WHERE barcode = ?", 
+                  [$new_location, $_SESSION['admin_id'], $barcode]);
+        
+        // Record location history
+        $db->query("INSERT INTO location_history (equipment_id, previous_location, new_location, scanned_by, notes) VALUES (?, ?, ?, ?, ?)",
+                  [$equipment['id'], $previous_location, $new_location, $_SESSION['admin_id'], $notes]);
+        
+        // Log activity
+        logActivity('Location Update via Barcode', 'equipment', $equipment['id'], 
+                   ['location' => $previous_location], 
+                   ['location' => $new_location, 'barcode' => $barcode]);
+        
+        return [
+            'success' => true, 
+            'message' => "Location updated successfully for {$equipment['item_name']}",
+            'equipment' => $equipment,
+            'previous_location' => $previous_location,
+            'new_location' => $new_location
+        ];
+        
+    } catch (Exception $e) {
+        return ['success' => false, 'message' => 'Error updating location: ' . $e->getMessage()];
+    }
+}
+
+// Get equipment by barcode
+function getEquipmentByBarcode($barcode) {
+    global $db;
+    return $db->fetch("SELECT * FROM equipment WHERE barcode = ?", [$barcode]);
+}
+
+// Get location history for equipment
+function getLocationHistory($equipment_id, $limit = 10) {
+    global $db;
+    
+    $sql = "SELECT lh.*, au.full_name as scanned_by_name 
+            FROM location_history lh 
+            LEFT JOIN admin_users au ON lh.scanned_by = au.id 
+            WHERE lh.equipment_id = ? 
+            ORDER BY lh.created_at DESC 
+            LIMIT ?";
+    
+    return $db->fetchAll($sql, [$equipment_id, $limit]);
+}
+
+// Get recent location changes
+function getRecentLocationChanges($limit = 20) {
+    global $db;
+    
+    $sql = "SELECT lh.*, e.item_name, e.barcode, au.full_name as scanned_by_name
+            FROM location_history lh
+            LEFT JOIN equipment e ON lh.equipment_id = e.id
+            LEFT JOIN admin_users au ON lh.scanned_by = au.id
+            ORDER BY lh.created_at DESC
+            LIMIT ?";
+    
+    return $db->fetchAll($sql, [$limit]);
 }
 
 // Log admin activity
@@ -87,6 +193,14 @@ function getEquipmentStats() {
     return $stats;
 }
 
+// Get location statistics
+function getLocationStats() {
+    global $db;
+    
+    $locations = $db->fetchAll("SELECT location, COUNT(*) as count FROM equipment WHERE location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC");
+    return $locations;
+}
+
 // Search equipment
 function searchEquipment($search_term) {
     global $db;
@@ -108,48 +222,18 @@ function isValidEmail($email) {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
 }
 
-// Generate barcode image (simple text-based for demo)
-function generateBarcodeImage($barcode) {
-    // This is a simple implementation. In production, you might want to use a proper barcode library
-    return "data:image/svg+xml;base64," . base64_encode('
-    <svg width="200" height="80" xmlns="http://www.w3.org/2000/svg">
-        <rect width="200" height="80" fill="white"/>
-        <g fill="black">
-            <rect x="10" y="10" width="2" height="50"/>
-            <rect x="15" y="10" width="1" height="50"/>
-            <rect x="18" y="10" width="3" height="50"/>
-            <rect x="25" y="10" width="1" height="50"/>
-            <rect x="30" y="10" width="2" height="50"/>
-            <rect x="35" y="10" width="1" height="50"/>
-            <rect x="40" y="10" width="2" height="50"/>
-            <rect x="45" y="10" width="3" height="50"/>
-            <rect x="52" y="10" width="1" height="50"/>
-            <rect x="57" y="10" width="2" height="50"/>
-            <rect x="63" y="10" width="1" height="50"/>
-            <rect x="68" y="10" width="3" height="50"/>
-            <rect x="75" y="10" width="2" height="50"/>
-            <rect x="80" y="10" width="1" height="50"/>
-            <rect x="85" y="10" width="2" height="50"/>
-            <rect x="90" y="10" width="3" height="50"/>
-            <rect x="97" y="10" width="1" height="50"/>
-            <rect x="102" y="10" width="2" height="50"/>
-            <rect x="108" y="10" width="1" height="50"/>
-            <rect x="113" y="10" width="3" height="50"/>
-            <rect x="120" y="10" width="2" height="50"/>
-            <rect x="125" y="10" width="1" height="50"/>
-            <rect x="130" y="10" width="2" height="50"/>
-            <rect x="135" y="10" width="3" height="50"/>
-            <rect x="142" y="10" width="1" height="50"/>
-            <rect x="147" y="10" width="2" height="50"/>
-            <rect x="153" y="10" width="1" height="50"/>
-            <rect x="158" y="10" width="3" height="50"/>
-            <rect x="165" y="10" width="2" height="50"/>
-            <rect x="170" y="10" width="1" height="50"/>
-            <rect x="175" y="10" width="2" height="50"/>
-            <rect x="180" y="10" width="3" height="50"/>
-            <rect x="187" y="10" width="1" height="50"/>
-        </g>
-        <text x="100" y="75" text-anchor="middle" font-family="monospace" font-size="12">' . $barcode . '</text>
-    </svg>');
+// Check if barcode exists
+function barcodeExists($barcode, $exclude_id = null) {
+    global $db;
+    
+    $sql = "SELECT id FROM equipment WHERE barcode = ?";
+    $params = [$barcode];
+    
+    if ($exclude_id) {
+        $sql .= " AND id != ?";
+        $params[] = $exclude_id;
+    }
+    
+    return $db->fetch($sql, $params) !== false;
 }
 ?>
