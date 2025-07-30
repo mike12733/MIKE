@@ -166,6 +166,16 @@ if ($_POST) {
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="barcode_scanner.php">
+                                <i class="fas fa-qrcode me-2"></i>Barcode Scanner
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="location_tracker.php">
+                                <i class="fas fa-map-marker-alt me-2"></i>Location Tracker
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="reports.php">
                                 <i class="fas fa-chart-bar me-2"></i>Reports
                             </a>

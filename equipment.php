@@ -151,6 +151,16 @@ if (isset($_GET['delete'])) {
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="barcode_scanner.php">
+                                <i class="fas fa-qrcode me-2"></i>Barcode Scanner
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="location_tracker.php">
+                                <i class="fas fa-map-marker-alt me-2"></i>Location Tracker
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="reports.php">
                                 <i class="fas fa-chart-bar me-2"></i>Reports
                             </a>
@@ -353,13 +363,36 @@ if (isset($_GET['delete'])) {
             document.getElementById('equipmentName').textContent = itemName;
             document.getElementById('barcodeNumber').textContent = barcode;
             
-            // Generate barcode image (simple representation)
+            // Generate enhanced barcode image
             const barcodeContainer = document.getElementById('barcodeContainer');
-            barcodeContainer.innerHTML = `
-                <div style="font-family: 'Courier New', monospace; font-size: 2em; letter-spacing: 2px; border: 2px solid #000; padding: 10px; display: inline-block;">
-                    ||||| || ||| | || |||||
-                </div>
+            
+            // Create a more realistic barcode SVG
+            const width = 300;
+            const height = 100;
+            const barWidth = 2;
+            let bars = '';
+            
+            // Simple pattern based on barcode - in production, use proper Code128 encoding
+            const pattern = barcode.split('').map(char => char.charCodeAt(0) % 2);
+            let x = 20;
+            
+            pattern.forEach((bit, i) => {
+                if (bit === 0) {
+                    bars += `<rect x="${x}" y="15" width="${barWidth}" height="50" fill="black"/>`;
+                }
+                x += barWidth + 1;
+                if (x > width - 40) return;
+            });
+            
+            const svg = `
+                <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="${width}" height="${height}" fill="white" stroke="#ccc"/>
+                    ${bars}
+                    <text x="${width/2}" y="85" text-anchor="middle" font-family="Arial" font-size="12" fill="black">${barcode}</text>
+                </svg>
             `;
+            
+            barcodeContainer.innerHTML = svg;
             
             const modal = new bootstrap.Modal(document.getElementById('barcodeModal'));
             modal.show();

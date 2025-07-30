@@ -28,7 +28,24 @@ CREATE TABLE IF NOT EXISTS equipment (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     created_by INT,
-    FOREIGN KEY (created_by) REFERENCES admin_users(id)
+    last_scanned_at TIMESTAMP NULL,
+    last_scanned_by INT NULL,
+    FOREIGN KEY (created_by) REFERENCES admin_users(id),
+    FOREIGN KEY (last_scanned_by) REFERENCES admin_users(id)
+);
+
+-- Location history table for tracking equipment movement
+CREATE TABLE IF NOT EXISTS location_history (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    equipment_id INT NOT NULL,
+    previous_location VARCHAR(255),
+    new_location VARCHAR(255) NOT NULL,
+    scanned_by INT NOT NULL,
+    scan_method ENUM('Manual', 'Barcode Scanner', 'QR Code') DEFAULT 'Barcode Scanner',
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE CASCADE,
+    FOREIGN KEY (scanned_by) REFERENCES admin_users(id)
 );
 
 -- Admin activity logs table
@@ -53,5 +70,8 @@ INSERT INTO admin_users (email, password, full_name) VALUES
 -- Create indexes for better performance
 CREATE INDEX idx_equipment_barcode ON equipment(barcode);
 CREATE INDEX idx_equipment_category ON equipment(category);
+CREATE INDEX idx_equipment_location ON equipment(location);
+CREATE INDEX idx_location_history_equipment ON location_history(equipment_id);
+CREATE INDEX idx_location_history_created_at ON location_history(created_at);
 CREATE INDEX idx_admin_logs_admin_id ON admin_logs(admin_id);
 CREATE INDEX idx_admin_logs_created_at ON admin_logs(created_at);
