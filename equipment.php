@@ -292,6 +292,14 @@ if (isset($_GET['delete'])) {
                                                     </td>
                                                     <td>
                                                         <div class="btn-group" role="group">
+                                                            <a href="barcode_scanner.php?barcode=<?= urlencode($item['barcode']) ?>" 
+                                                               class="btn btn-sm btn-outline-success" title="Track/Scan">
+                                                                <i class="fas fa-qrcode"></i>
+                                                            </a>
+                                                            <a href="barcode_print.php?equipment_id=<?= $item['id'] ?>" 
+                                                               class="btn btn-sm btn-outline-info" title="Print Label">
+                                                                <i class="fas fa-print"></i>
+                                                            </a>
                                                             <a href="edit_equipment.php?id=<?= $item['id'] ?>" 
                                                                class="btn btn-sm btn-outline-primary" title="Edit">
                                                                 <i class="fas fa-edit"></i>

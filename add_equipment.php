@@ -38,6 +38,10 @@ if ($_POST) {
             $db->query($sql, $params);
             $equipment_id = $db->lastInsertId();
             
+            // Initialize real-time tracking status
+            $db->query("INSERT INTO equipment_realtime_status (equipment_id, current_location, current_condition, last_scanned_by) VALUES (?, ?, ?, ?)", 
+                      [$equipment_id, $location, $condition_status, $_SESSION['admin_id']]);
+            
             // Log activity
             logActivity('Add Equipment', 'equipment', $equipment_id, null, [
                 'item_name' => $item_name,

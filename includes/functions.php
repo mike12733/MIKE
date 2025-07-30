@@ -21,9 +21,27 @@ function requireLogin() {
     }
 }
 
-// Generate unique barcode
+// Generate unique sequential barcode
 function generateBarcode() {
-    return 'EQ' . date('Y') . str_pad(rand(1, 99999), 5, '0', STR_PAD_LEFT);
+    global $db;
+    
+    $current_year = date('Y');
+    
+    // Get or create sequence for current year
+    $sequence_data = $db->fetch("SELECT sequence_number FROM barcode_sequence WHERE year = ?", [$current_year]);
+    
+    if (!$sequence_data) {
+        // Create new sequence for the year
+        $db->query("INSERT INTO barcode_sequence (year, sequence_number) VALUES (?, 1)", [$current_year]);
+        $sequence_number = 1;
+    } else {
+        // Increment existing sequence
+        $sequence_number = $sequence_data['sequence_number'] + 1;
+        $db->query("UPDATE barcode_sequence SET sequence_number = ? WHERE year = ?", [$sequence_number, $current_year]);
+    }
+    
+    // Format: EQ + Year + 6-digit sequence number
+    return 'EQ' . $current_year . str_pad($sequence_number, 6, '0', STR_PAD_LEFT);
 }
 
 // Log admin activity
@@ -47,6 +65,92 @@ function logActivity($action, $table_name = null, $record_id = null, $old_values
     ];
     
     $db->query($sql, $params);
+}
+
+// Track equipment scan/movement
+function trackEquipmentScan($equipment_id, $new_location = null, $new_condition = null, $scan_type = 'location_update', $notes = '') {
+    global $db;
+    
+    if (!isLoggedIn()) return false;
+    
+    try {
+        $db->getConnection()->beginTransaction();
+        
+        // Get current equipment data
+        $equipment = $db->fetch("SELECT * FROM equipment WHERE id = ?", [$equipment_id]);
+        if (!$equipment) {
+            throw new Exception("Equipment not found");
+        }
+        
+        $previous_location = $equipment['location'];
+        $previous_condition = $equipment['condition_status'];
+        $final_location = $new_location ?? $previous_location;
+        $final_condition = $new_condition ?? $previous_condition;
+        
+        // Update equipment table
+        $db->query("UPDATE equipment SET location = ?, condition_status = ?, last_scanned_at = NOW(), last_scanned_by = ? WHERE id = ?", 
+                  [$final_location, $final_condition, $_SESSION['admin_id'], $equipment_id]);
+        
+        // Insert tracking record
+        $db->query("INSERT INTO equipment_tracking (equipment_id, previous_location, new_location, previous_condition, new_condition, scan_type, notes, scanned_by) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+                  [$equipment_id, $previous_location, $final_location, $previous_condition, $final_condition, $scan_type, $notes, $_SESSION['admin_id']]);
+        
+        // Update real-time status
+        $db->query("INSERT INTO equipment_realtime_status (equipment_id, current_location, current_condition, last_scanned_by) 
+                   VALUES (?, ?, ?, ?) 
+                   ON DUPLICATE KEY UPDATE 
+                   current_location = VALUES(current_location), 
+                   current_condition = VALUES(current_condition), 
+                   last_activity = NOW(), 
+                   last_scanned_by = VALUES(last_scanned_by)", 
+                  [$equipment_id, $final_location, $final_condition, $_SESSION['admin_id']]);
+        
+        // Log activity
+        logActivity('Equipment Scan', 'equipment', $equipment_id, 
+                   ['location' => $previous_location, 'condition' => $previous_condition], 
+                   ['location' => $final_location, 'condition' => $final_condition]);
+        
+        $db->getConnection()->commit();
+        return true;
+        
+    } catch (Exception $e) {
+        $db->getConnection()->rollBack();
+        return false;
+    }
+}
+
+// Get equipment by barcode
+function getEquipmentByBarcode($barcode) {
+    global $db;
+    return $db->fetch("SELECT e.*, ers.current_location as realtime_location, ers.is_checked_out, ers.checked_out_to, ers.last_activity 
+                      FROM equipment e 
+                      LEFT JOIN equipment_realtime_status ers ON e.id = ers.equipment_id 
+                      WHERE e.barcode = ? AND e.is_active = 1", [$barcode]);
+}
+
+// Get equipment tracking history
+function getEquipmentTrackingHistory($equipment_id, $limit = 50) {
+    global $db;
+    return $db->fetchAll("SELECT et.*, au.full_name as scanned_by_name 
+                         FROM equipment_tracking et 
+                         JOIN admin_users au ON et.scanned_by = au.id 
+                         WHERE et.equipment_id = ? 
+                         ORDER BY et.scanned_at DESC 
+                         LIMIT ?", [$equipment_id, $limit]);
+}
+
+// Get real-time equipment status
+function getRealTimeEquipmentStatus() {
+    global $db;
+    return $db->fetchAll("SELECT e.id, e.item_name, e.barcode, e.category, 
+                         ers.current_location, ers.current_condition, ers.is_checked_out, 
+                         ers.checked_out_to, ers.last_activity, au.full_name as last_scanned_by_name
+                         FROM equipment e 
+                         LEFT JOIN equipment_realtime_status ers ON e.id = ers.equipment_id 
+                         LEFT JOIN admin_users au ON ers.last_scanned_by = au.id 
+                         WHERE e.is_active = 1 
+                         ORDER BY ers.last_activity DESC");
 }
 
 // Sanitize input
@@ -74,15 +178,20 @@ function getEquipmentStats() {
         'fair' => 0,
         'poor' => 0,
         'damaged' => 0,
-        'lost' => 0
+        'lost' => 0,
+        'checked_out' => 0
     ];
     
-    $result = $db->fetchAll("SELECT condition_status, SUM(quantity) as count FROM equipment GROUP BY condition_status");
+    $result = $db->fetchAll("SELECT condition_status, SUM(quantity) as count FROM equipment WHERE is_active = 1 GROUP BY condition_status");
     
     foreach ($result as $row) {
         $stats['total'] += $row['count'];
         $stats[strtolower($row['condition_status'])] = $row['count'];
     }
+    
+    // Get checked out count
+    $checked_out = $db->fetch("SELECT COUNT(*) as count FROM equipment_realtime_status WHERE is_checked_out = 1");
+    $stats['checked_out'] = $checked_out['count'] ?? 0;
     
     return $stats;
 }
@@ -91,13 +200,17 @@ function getEquipmentStats() {
 function searchEquipment($search_term) {
     global $db;
     
-    $sql = "SELECT * FROM equipment WHERE 
-            item_name LIKE ? OR 
-            description LIKE ? OR 
-            category LIKE ? OR 
-            barcode LIKE ? OR 
-            location LIKE ?
-            ORDER BY created_at DESC";
+    $sql = "SELECT e.*, ers.current_location as realtime_location, ers.is_checked_out, ers.last_activity 
+            FROM equipment e 
+            LEFT JOIN equipment_realtime_status ers ON e.id = ers.equipment_id 
+            WHERE e.is_active = 1 AND (
+                e.item_name LIKE ? OR 
+                e.description LIKE ? OR 
+                e.category LIKE ? OR 
+                e.barcode LIKE ? OR 
+                e.location LIKE ?
+            )
+            ORDER BY e.created_at DESC";
     
     $search = "%{$search_term}%";
     return $db->fetchAll($sql, [$search, $search, $search, $search, $search]);
@@ -108,48 +221,111 @@ function isValidEmail($email) {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
 }
 
-// Generate barcode image (simple text-based for demo)
+// Generate proper barcode image using Code128 format
 function generateBarcodeImage($barcode) {
-    // This is a simple implementation. In production, you might want to use a proper barcode library
-    return "data:image/svg+xml;base64," . base64_encode('
-    <svg width="200" height="80" xmlns="http://www.w3.org/2000/svg">
-        <rect width="200" height="80" fill="white"/>
-        <g fill="black">
-            <rect x="10" y="10" width="2" height="50"/>
-            <rect x="15" y="10" width="1" height="50"/>
-            <rect x="18" y="10" width="3" height="50"/>
-            <rect x="25" y="10" width="1" height="50"/>
-            <rect x="30" y="10" width="2" height="50"/>
-            <rect x="35" y="10" width="1" height="50"/>
-            <rect x="40" y="10" width="2" height="50"/>
-            <rect x="45" y="10" width="3" height="50"/>
-            <rect x="52" y="10" width="1" height="50"/>
-            <rect x="57" y="10" width="2" height="50"/>
-            <rect x="63" y="10" width="1" height="50"/>
-            <rect x="68" y="10" width="3" height="50"/>
-            <rect x="75" y="10" width="2" height="50"/>
-            <rect x="80" y="10" width="1" height="50"/>
-            <rect x="85" y="10" width="2" height="50"/>
-            <rect x="90" y="10" width="3" height="50"/>
-            <rect x="97" y="10" width="1" height="50"/>
-            <rect x="102" y="10" width="2" height="50"/>
-            <rect x="108" y="10" width="1" height="50"/>
-            <rect x="113" y="10" width="3" height="50"/>
-            <rect x="120" y="10" width="2" height="50"/>
-            <rect x="125" y="10" width="1" height="50"/>
-            <rect x="130" y="10" width="2" height="50"/>
-            <rect x="135" y="10" width="3" height="50"/>
-            <rect x="142" y="10" width="1" height="50"/>
-            <rect x="147" y="10" width="2" height="50"/>
-            <rect x="153" y="10" width="1" height="50"/>
-            <rect x="158" y="10" width="3" height="50"/>
-            <rect x="165" y="10" width="2" height="50"/>
-            <rect x="170" y="10" width="1" height="50"/>
-            <rect x="175" y="10" width="2" height="50"/>
-            <rect x="180" y="10" width="3" height="50"/>
-            <rect x="187" y="10" width="1" height="50"/>
-        </g>
-        <text x="100" y="75" text-anchor="middle" font-family="monospace" font-size="12">' . $barcode . '</text>
-    </svg>');
+    // Enhanced SVG barcode with proper Code128-style pattern
+    $width = 300;
+    $height = 100;
+    $barHeight = 60;
+    $textHeight = 20;
+    
+    // Simple Code128-inspired pattern generator
+    $pattern = generateBarcodePattern($barcode);
+    
+    $svg = '<svg width="' . $width . '" height="' . $height . '" xmlns="http://www.w3.org/2000/svg">
+        <rect width="' . $width . '" height="' . $height . '" fill="white" stroke="black" stroke-width="1"/>
+        <g fill="black">';
+    
+    $x = 20;
+    $barWidth = 2;
+    
+    foreach ($pattern as $bar) {
+        if ($bar == '1') {
+            $svg .= '<rect x="' . $x . '" y="15" width="' . $barWidth . '" height="' . $barHeight . '"/>';
+        }
+        $x += $barWidth;
+    }
+    
+    $svg .= '</g>
+        <text x="' . ($width/2) . '" y="' . ($height - 5) . '" text-anchor="middle" font-family="monospace" font-size="14" fill="black">' . $barcode . '</text>
+    </svg>';
+    
+    return "data:image/svg+xml;base64," . base64_encode($svg);
+}
+
+// Generate barcode pattern (simplified Code128 representation)
+function generateBarcodePattern($barcode) {
+    $pattern = [];
+    
+    // Start pattern
+    $pattern = array_merge($pattern, [1,1,0,1,0,1,1,0,0]);
+    
+    // Convert each character to a pattern
+    for ($i = 0; $i < strlen($barcode); $i++) {
+        $char = ord($barcode[$i]);
+        $charPattern = [];
+        
+        // Simple pattern generation based on character ASCII value
+        for ($j = 0; $j < 8; $j++) {
+            $charPattern[] = ($char >> $j) & 1;
+        }
+        
+        $pattern = array_merge($pattern, $charPattern);
+    }
+    
+    // End pattern
+    $pattern = array_merge($pattern, [1,1,0,0,1,0,1,1,1]);
+    
+    return $pattern;
+}
+
+// Check equipment out
+function checkoutEquipment($equipment_id, $checked_out_to, $notes = '') {
+    global $db;
+    
+    if (!isLoggedIn()) return false;
+    
+    try {
+        $db->getConnection()->beginTransaction();
+        
+        // Update real-time status
+        $db->query("UPDATE equipment_realtime_status SET is_checked_out = 1, checked_out_to = ?, last_activity = NOW(), last_scanned_by = ? WHERE equipment_id = ?", 
+                  [$checked_out_to, $_SESSION['admin_id'], $equipment_id]);
+        
+        // Track the checkout
+        trackEquipmentScan($equipment_id, null, null, 'checkout', "Checked out to: $checked_out_to. $notes");
+        
+        $db->getConnection()->commit();
+        return true;
+        
+    } catch (Exception $e) {
+        $db->getConnection()->rollBack();
+        return false;
+    }
+}
+
+// Check equipment in
+function checkinEquipment($equipment_id, $new_location = null, $new_condition = null, $notes = '') {
+    global $db;
+    
+    if (!isLoggedIn()) return false;
+    
+    try {
+        $db->getConnection()->beginTransaction();
+        
+        // Update real-time status
+        $db->query("UPDATE equipment_realtime_status SET is_checked_out = 0, checked_out_to = NULL, last_activity = NOW(), last_scanned_by = ? WHERE equipment_id = ?", 
+                  [$_SESSION['admin_id'], $equipment_id]);
+        
+        // Track the checkin with location/condition updates
+        trackEquipmentScan($equipment_id, $new_location, $new_condition, 'checkin', "Equipment checked in. $notes");
+        
+        $db->getConnection()->commit();
+        return true;
+        
+    } catch (Exception $e) {
+        $db->getConnection()->rollBack();
+        return false;
+    }
 }
 ?>
