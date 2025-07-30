@@ -151,6 +151,11 @@ if (isset($_GET['delete'])) {
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="track_equipment.php">
+                                <i class="fas fa-qrcode me-2"></i>Track Equipment
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="reports.php">
                                 <i class="fas fa-chart-bar me-2"></i>Reports
                             </a>
