@@ -127,6 +127,21 @@ $recent_logs = $db->fetchAll("
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="barcode_scanner.php">
+                                <i class="fas fa-qrcode me-2"></i>Barcode Scanner
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="realtime_tracking.php">
+                                <i class="fas fa-map-marker-alt me-2"></i>Real-time Tracking
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="barcode_print.php">
+                                <i class="fas fa-print me-2"></i>Print Labels
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="reports.php">
                                 <i class="fas fa-chart-bar me-2"></i>Reports
                             </a>
